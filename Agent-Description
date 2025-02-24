@@ -1,0 +1,3 @@
+The Detection Agent uses Hugging Face's flan-t5-base model and a refined prompt to analyze system logs for ransomware.  
+  Leveraging LangChain, it classifies logs as "normal" or "ransomware," providing reasoning based on keywords and behavioral clues. 
+  Tested on synthetic data, it's a prototype for an autonomous cybersecurity system, ready for prompt refinement and real-world dataset evaluation.
