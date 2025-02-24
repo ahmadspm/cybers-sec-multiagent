@@ -1,0 +1,92 @@
+# --- STEP 1: Install necessary libraries ---
+!pip install langchain huggingface_hub  # LangChain core and Hugging Face Hub integration
+!pip install langchain-community      # LangChain community package (may be needed for some features)
+
+# --- STEP 2: Set up Hugging Face API Token as environment variable ---
+import os
+
+# IMPORTANT: Replace "YOUR_HUGGINGFACE_API_TOKEN" with your actual Hugging Face API token from huggingface.co/settings/tokens
+os.environ["HUGGINGFACEHUB_API_TOKEN"] = "put your Hugging Face API"  # <--- REPLACE WITH YOUR HUGGING FACE API TOKEN
+
+# --- STEP 3: Define the refined prompt for the Detection Agent ---
+from langchain.prompts import ChatPromptTemplate
+
+refined_prompt_1 = ChatPromptTemplate.from_template("""
+    You are a highly skilled cybersecurity expert specializing in ransomware detection. Your mission is to analyze system log messages and identify potential ransomware activity.
+
+    When analyzing the log message, consider looking for the following keywords and patterns that are often associated with ransomware:
+
+    Keywords: "encrypt", "ransom", ".locky", ".crypt", "WannaCry", "Petya", "shadow copy deleted", "file encrypted", "data encrypted", "payment demanded"
+
+    Behavioral Clues:
+    - Unusual file system modifications (e.g., rapid file renaming, modification of many files in a short period).
+    - Processes running from temporary directories with suspicious names (e.g., strings of random characters, "encryptor.exe", "ransomware.exe").
+    - Attempts to delete volume shadow copies (used for system recovery).
+    - Network connections to known malicious IPs or command-and-control (C2) servers (if network information is in the log).
+    - Access denied errors when writing to or modifying system files.
+
+    Based on your analysis, classify the following log message as either "normal" or "ransomware". Explain your reasoning briefly, focusing on the keywords or behavioral clues you detected (if any).
+
+    Log Message: {log_message}
+
+    Classification (normal/ransomware):
+    Reasoning:
+""")
+
+# --- STEP 4: Define the Detection Agent class using Hugging Face Inference Client and the refined prompt ---
+from huggingface_hub import InferenceClient
+
+class DetectionAgent:
+    def __init__(self, inference_client):
+        self.inference_client = inference_client  # Store Hugging Face Inference Client
+        self.prompt = refined_prompt_1  # Use the refined prompt (refined_prompt_1)
+
+    def analyze_log(self, log_message):
+        prompt_value = self.prompt.format_messages(log_message=log_message)
+        # Call Hugging Face Inference Client for text generation
+        response = self.inference_client.text_generation(
+            prompt_value[0].content,  # Send the prompt content as text
+            model="google/flan-t5-base",  # Specify the Hugging Face model to use (flan-t5-base)
+            temperature=0.1,             # Lower temperature for more deterministic output
+            max_new_tokens=64            # Limit the length of the generated response
+        )
+        return response  # Return the LLM's text response
+
+# --- STEP 5: Initialize Hugging Face Inference Client and create Detection Agent instance ---
+# Create an InferenceClient instance using your Hugging Face API token
+inference_client = InferenceClient(token=os.environ["HUGGINGFACEHUB_API_TOKEN"])
+
+# Create an instance of the DetectionAgent class, passing the Inference Client
+detection_agent = DetectionAgent(inference_client=inference_client)
+
+# --- STEP 6: Define the synthetic log dataset (same as before) ---
+synthetic_logs = [
+    {"log_message": "System boot successful.", "label": "normal"},
+    {"log_message": "User 'john' logged in from IP 192.168.1.100.", "label": "normal"},
+    {"log_message": "Suspicious process 'encryptor.exe' started from temp folder.", "label": "ransomware"},
+    {"log_message": "Access denied writing to critical system files.", "label": "ransomware"},
+    {"log_message": "Scheduled backup job completed successfully.", "label": "normal"},
+    {"log_message": "Volume shadow copy deletion detected.", "label": "ransomware"}, # Ransomware often deletes shadow copies
+    {"log_message": "Network connection established to unknown IP address 8.8.8.8, port 443.", "label": "suspicious"}, # Could be normal, could be C2
+    {"log_message": "Antivirus software updated definitions.", "label": "normal"}
+]
+
+# --- STEP 7: Create Pandas DataFrame from synthetic logs and display it ---
+import pandas as pd
+
+synthetic_logs_df = pd.DataFrame(synthetic_logs)
+print("--- Synthetic Log Dataset ---")
+print(synthetic_logs_df)
+
+# --- STEP 8: Run experiment loop - Analyze each log message with the Detection Agent and print results ---
+print("\n--- Detection Agent Analysis of Synthetic Logs (Using Hugging Face Hub - flan-t5-base) with Refined Prompt 1 ---")
+for index, row in synthetic_logs_df.iterrows():
+    log_message = row['log_message']
+    label = row['label']
+
+    analysis_response = detection_agent.analyze_log(log_message)
+
+    print(f"\nLog Message: {log_message}")
+    print(f"Actual Label: {label}")
+    print(f"Agent Analysis (Hugging Face - flan-t5-base, Refined Prompt 1):\n{analysis_response}") # Indicate refined prompt in output
+    print("-" * 30)
